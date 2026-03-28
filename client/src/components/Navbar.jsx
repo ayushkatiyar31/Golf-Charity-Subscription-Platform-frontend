@@ -1,4 +1,4 @@
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { HandHeart, LayoutDashboard, LogOut, Moon, Shield, Sparkles, SunMedium } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
@@ -12,6 +12,13 @@ const navItems = [
 export const Navbar = () => {
   const { user, isAdmin, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const displayName = user?.name?.trim() || user?.email || 'Signed in';
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/', { replace: true });
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-[color:var(--panel-strong)]/85 backdrop-blur-xl">
@@ -43,6 +50,9 @@ export const Navbar = () => {
           </div>
           {user ? (
             <>
+              <div className="hidden rounded-2xl border border-[color:var(--line)] px-4 py-2 text-sm font-semibold heading-text sm:block">
+                {displayName}
+              </div>
               <Link to="/dashboard" className="btn btn-secondary hidden sm:inline-flex">
                 <LayoutDashboard size={16} /> Dashboard
               </Link>
@@ -51,7 +61,7 @@ export const Navbar = () => {
                   <Shield size={16} /> Admin
                 </Link>
               ) : null}
-              <button onClick={logout} className="btn btn-ghost">
+              <button onClick={handleLogout} className="btn btn-ghost">
                 <LogOut size={16} /> Logout
               </button>
             </>

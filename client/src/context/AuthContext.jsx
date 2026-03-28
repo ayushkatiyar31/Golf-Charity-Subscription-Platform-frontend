@@ -39,9 +39,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await authService.logout();
-    localStorage.removeItem('golf-charity-token');
-    setUser(null);
+    try {
+      await authService.logout();
+    } finally {
+      localStorage.removeItem('golf-charity-token');
+      setUser(null);
+    }
   };
 
   return (
