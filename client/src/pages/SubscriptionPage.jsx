@@ -13,6 +13,7 @@ export default function SubscriptionPage() {
   const [transactions, setTransactions] = useState([]);
   const [paymentGatewayReady, setPaymentGatewayReady] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -96,20 +97,31 @@ export default function SubscriptionPage() {
   const handleSubscribe = async () => {
     setMessage('');
     setError('');
+    setSubmitting(true);
     try {
       const payload = {
         planId: selectedPlanId || undefined,
         charityId: selectedCharityId || user?.charity?._id || undefined,
         autoRenew: true
       };
-      const { data } = await subscriptionService.createCheckoutSession(payload);
-      if (data.mode === 'redirect' && data.url) {
-        window.location.href = data.url;
-        return;
+
+      if (paymentGatewayReady) {
+        const { data } = await subscriptionService.createCheckoutSession(payload);
+        const checkoutUrl = data.url || data.checkoutUrl || data.sessionUrl;
+        if (checkoutUrl) {
+          window.location.assign(checkoutUrl);
+          return;
+        }
+        setMessage(data.message || 'Payment session created. Please follow the payment instructions.');
+      } else {
+        const { data } = await subscriptionService.create(payload);
+        setMessage(data.message || 'Subscription activated. Payment gateway is not connected, so this was saved directly.');
+        await load();
       }
-      setMessage(data.message || 'Redirecting to payment');
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to start payment');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -120,7 +132,7 @@ export default function SubscriptionPage() {
   const activeCharityId = selectedCharityId || user?.charity?._id || '';
   const selectedPlan = plans.find((plan) => plan._id === selectedPlanId) || plans[0];
   const selectedCharity = charities.find((charity) => charity._id === activeCharityId);
-  const canStartCheckout = paymentGatewayReady && selectedPlan && activeCharityId;
+  const canStartCheckout = selectedPlan && activeCharityId && !submitting;
 
   return (
     <div className="space-y-8">
@@ -147,7 +159,7 @@ export default function SubscriptionPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="heading-text text-lg font-semibold">{charity.name}</div>
-                      <div className="text-sm soft-text">{charity.cause} • {charity.category}</div>
+                      <div className="text-sm soft-text">{charity.cause} â€¢ {charity.category}</div>
                     </div>
                     {isSelected ? <CheckCircle2 size={18} className="text-[color:var(--brand)]" /> : null}
                   </div>
@@ -187,7 +199,7 @@ export default function SubscriptionPage() {
               <div className="text-sm uppercase tracking-[0.16em] soft-text">Included benefits</div>
               <div className="mt-3 space-y-2 text-sm soft-text">
                 {selectedPlan.benefits.map((benefit) => (
-                  <div key={benefit}>• {benefit}</div>
+                  <div key={benefit}>â€¢ {benefit}</div>
                 ))}
               </div>
             </div>
@@ -198,14 +210,15 @@ export default function SubscriptionPage() {
             disabled={!canStartCheckout}
             className="btn btn-primary mt-6 w-full justify-center disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
           >
-            <Sparkles size={16} /> Subscribe / Pay Now
+            <Sparkles size={16} /> {submitting ? 'Processing...' : 'Subscribe / Pay Now'}
           </button>
 
           <div className="mt-4 rounded-[1.2rem] border border-[color:var(--line)] p-4 text-sm soft-text">
             <div className="heading-text font-semibold">Current selection</div>
             <div className="mt-2">Charity: {selectedCharity?.name || 'Not selected yet'}</div>
             <div>Plan: {selectedPlan?.name || 'Not selected yet'}</div>
-            <div>Activation: after successful payment only</div>
+            <div>Payment: {paymentGatewayReady ? 'secure checkout redirect' : 'direct subscription fallback'}</div>
+            <div>Activation: {paymentGatewayReady ? 'after successful payment only' : 'saved after clicking subscribe'}</div>
           </div>
         </div>
       </section>
@@ -226,7 +239,7 @@ export default function SubscriptionPage() {
                   <div className="heading-text">{transaction.status}</div>
                   <div className="text-[color:var(--brand)]">${transaction.amount}</div>
                 </div>
-                <div className="mt-1 text-sm soft-text">{transaction.type} • {transaction.provider}</div>
+                <div className="mt-1 text-sm soft-text">{transaction.type} â€¢ {transaction.provider}</div>
               </div>
             )) : <div className="rounded-[1rem] border border-dashed border-[color:var(--line)] p-4 soft-text">No payments yet.</div>}
           </div>

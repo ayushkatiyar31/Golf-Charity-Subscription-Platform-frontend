@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { adminService, charityService } from '../services';
+import { adminService, charityService, userService } from '../services';
 import { apiBaseUrl } from '../services/api';
 import { StatCard } from '../components/StatCard';
 
@@ -14,11 +14,22 @@ const emptyCharityForm = {
   featured: false
 };
 
+const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
+
+const formatDate = (value) => {
+  if (!value) {
+    return 'Not available';
+  }
+  return new Date(value).toLocaleDateString();
+};
+
 export default function AdminPage() {
   const [analytics, setAnalytics] = useState(null);
   const [users, setUsers] = useState([]);
   const [proofs, setProofs] = useState([]);
   const [charities, setCharities] = useState([]);
+  const [draws, setDraws] = useState([]);
+  const [winners, setWinners] = useState([]);
   const [preview, setPreview] = useState(null);
   const [logic, setLogic] = useState('random');
   const [charityForm, setCharityForm] = useState(emptyCharityForm);
@@ -38,16 +49,20 @@ export default function AdminPage() {
   const load = async () => {
     setError('');
     try {
-      const [analyticsRes, usersRes, proofsRes, charitiesRes] = await Promise.all([
+      const [analyticsRes, usersRes, proofsRes, charitiesRes, drawsRes, winnersRes] = await Promise.all([
         adminService.analytics(),
         adminService.users(),
         adminService.proofs(),
-        charityService.list()
+        charityService.list(),
+        userService.draws().catch(() => ({ data: [] })),
+        userService.prizes().catch(() => ({ data: [] }))
       ]);
       setAnalytics(analyticsRes.data);
       setUsers(usersRes.data);
       setProofs(proofsRes.data);
       setCharities(charitiesRes.data);
+      setDraws(drawsRes.data || []);
+      setWinners(winnersRes.data || []);
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to load admin data');
     }
@@ -218,9 +233,18 @@ export default function AdminPage() {
           {preview ? (
             <div className="mt-6 rounded-[1.2rem] border border-[color:var(--line)] p-4 soft-text">
               <div className="heading-text">Winning numbers: {preview.winningNumbers.join(', ')}</div>
-              <div className="mt-2">Pool: ${preview.totalPool.toFixed(2)}</div>
-              <div>Rollover next month: ${preview.rolloverToNext.toFixed(2)}</div>
-              <div className="mt-2">Entries simulated: {preview.entries.length}</div>
+              <div className="mt-2">Pool: {formatCurrency(preview.totalPool)}</div>
+              <div>Rollover next month: {formatCurrency(preview.rolloverToNext)}</div>
+              <div className="mt-2">Entries simulated: {(preview.entries || []).length}</div>
+              <div className="mt-4 space-y-2">
+                {(preview.entries || []).slice(0, 8).map((entry, index) => (
+                  <div key={entry.user?._id || entry.userId || index} className="rounded-[1rem] border border-[color:var(--line)] px-3 py-2 text-sm">
+                    <div className="heading-text">{entry.user?.name || entry.name || `Entry ${index + 1}`}</div>
+                    <div>Scores: {(entry.scoreValues || entry.scores || []).join(', ') || 'No scores'}</div>
+                    <div>Matches: {entry.matchCount || entry.matches || 0}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>
@@ -259,6 +283,69 @@ export default function AdminPage() {
                 <button className="btn btn-primary justify-center">Save user</button>
               </form>
             ) : null}
+            <div className="mt-6">
+              <div className="text-sm uppercase tracking-[0.16em] soft-text">Users list</div>
+              <div className="mt-4 max-h-[28rem] space-y-3 overflow-auto pr-2">
+                {users.length ? users.map((entry) => (
+                  <button
+                    key={entry._id}
+                    onClick={() => setSelectedUserId(entry._id)}
+                    className={`w-full rounded-[1.2rem] border px-4 py-3 text-left transition ${selectedUserId === entry._id ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/10' : 'border-[color:var(--line)] hover:border-[color:var(--brand)]/40'}`}
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="heading-text font-semibold">{entry.name || 'Unnamed user'}</div>
+                        <div className="text-sm soft-text">{entry.email}</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="badge">{entry.role || 'subscriber'}</span>
+                        <span className="badge">{entry.subscription?.status || 'expired'}</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-sm soft-text">Charity: {entry.charity?.name || 'None'} | Scores: {(entry.scores || []).length}</div>
+                  </button>
+                )) : <div className="rounded-[1.2rem] border border-dashed border-[color:var(--line)] p-5 soft-text">No users found.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="page-card p-6">
+          <div className="badge">Draw history</div>
+          <div className="mt-5 space-y-4">
+            {draws.length ? draws.map((draw) => (
+              <div key={draw._id} className="rounded-[1.2rem] border border-[color:var(--line)] p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="heading-text text-lg font-semibold">{draw.monthKey || formatDate(draw.createdAt)}</div>
+                    <div className="text-sm soft-text">Logic: {draw.logic || 'not specified'}</div>
+                  </div>
+                  <div className="badge">{formatCurrency(draw.totalPool || draw.prizePool)}</div>
+                </div>
+                <div className="mt-3 soft-text">Winning numbers: {(draw.winningNumbers || []).join(', ') || 'Not published'}</div>
+                <div className="mt-2 text-sm soft-text">Rollover: {formatCurrency(draw.rolloverToNext || draw.rolloverAmount)}</div>
+              </div>
+            )) : <div className="rounded-[1.2rem] border border-dashed border-[color:var(--line)] p-5 soft-text">No draw history yet.</div>}
+          </div>
+        </div>
+
+        <div className="page-card p-6">
+          <div className="badge">Winners</div>
+          <div className="mt-5 space-y-4">
+            {(winners.length ? winners : proofs).length ? (winners.length ? winners : proofs).map((winner) => (
+              <div key={winner._id} className="rounded-[1.2rem] border border-[color:var(--line)] p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="heading-text font-semibold">{winner.user?.name || winner.userName || 'Winner'}</div>
+                    <div className="text-sm soft-text">{winner.draw?.monthKey || winner.monthKey || 'Draw'} | {winner.matchCount || winner.matches || 0}-match winner</div>
+                  </div>
+                  <div className="text-[color:var(--brand)]">{formatCurrency(winner.amount || winner.prizeAmount)}</div>
+                </div>
+                <div className="mt-3 text-sm soft-text">Verification: {winner.verificationStatus || 'pending'} | Payment: {winner.payoutStatus || 'pending'}</div>
+              </div>
+            )) : <div className="rounded-[1.2rem] border border-dashed border-[color:var(--line)] p-5 soft-text">No winners yet.</div>}
           </div>
         </div>
       </section>
